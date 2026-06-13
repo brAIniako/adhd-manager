@@ -328,7 +328,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
     try{
       const subInfo=at?.substeps.length>0?`\nPodkroki: ${at.substeps.map(s=>`${s.done?'✓':'○'} ${s.text}`).join(', ')}`:'';
       const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:200,
           system:'Daj JEDEN mikrokrok po polsku. Jedno zdanie. Bez wstępu.',
           messages:[{role:'user',content:`Zablokowany/a. Zadanie: "${at?.name||'brak'}". Energia: ${energy}/5.${subInfo} ${getTimeContext()}`}]})});
       const d=await res.json();clearTimeout(helpTORef.current);
@@ -801,7 +801,7 @@ function AIView({chatMessages,setChatMessages,energy,onSetEnergy,todayGoal,tasks
       setChatMessages(prev=>{const last=prev[prev.length-1];const e={role:'assistant',content:'⚠ Czas oczekiwania minął. Spróbuj ponownie.'};return last?.role==='assistant'&&last.content===''?[...prev.slice(0,-1),e]:[...prev,e];});},28000);
     try{
       const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:450,system:buildSys(),messages:msgs.map(m=>({role:m.role,content:m.content}))})});
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:450,system:buildSys(),messages:msgs.map(m=>({role:m.role,content:m.content}))})});
       clearTimeout(toRef.current);const d=await res.json();
       if(!res.ok){setChatMessages([...msgs,{role:'assistant',content:`⚠ Błąd API: ${d?.error?.message||res.status}`}]);return;}
       const reply=d?.content?.[0]?.text||'(brak odpowiedzi)';
