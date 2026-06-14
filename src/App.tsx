@@ -873,11 +873,13 @@ export default function App(){
   const timer=usePomodoro();
 
   useEffect(()=>{
+    let cancelled=false;
     (async()=>{
       const t=await store.get('adhd-tasks'),e=await store.get('adhd-energy');
       const a=await store.get('adhd-active-task');
-      setTasks(migrate(t||DEFAULT_TASKS));setEnergy(e??3);setActId(a??null);setLoaded(true);
+      if(!cancelled){setTasks(migrate(t||DEFAULT_TASKS));setEnergy(e??3);setActId(a??null);setLoaded(true);}
     })();
+    return()=>{cancelled=true;};
   },[]);
 
   const setEn=n=>{setEnergy(n);store.set('adhd-energy',n);};
