@@ -27,6 +27,8 @@ const PDOT={high:'#c96a3a',medium:'#7b5ea7',low:'#a09285'};
 const PL={high:'Wysoki',medium:'Średni',low:'Niski'};
 const GL={today:'Dzisiaj',week:'Ten tydzień',someday:'Kiedyś'};
 const pad2=n=>String(n).padStart(2,'0');
+const inp={border:`1px solid ${C.border}`,borderRadius:10,padding:'8px 10px',fontSize:13,outline:'none',background:C.bg,color:C.text,width:'100%',boxSizing:'border-box'};
+const lbl={fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.06em',textTransform:'uppercase',display:'block',marginBottom:4};
 
 // ─── HELPERS ──────────────────────────────────────────
 const normStr=s=>s.toLowerCase().replace(/ą/g,'a').replace(/ć/g,'c').replace(/ę/g,'e')
@@ -68,8 +70,8 @@ const DEFAULT_TASKS=[
 ];
 
 const store={
-  get:async k=>{try{const r=await window.storage.get(k);return r?JSON.parse(r.value):null;}catch{return null;}},
-  set:async(k,v)=>{try{await window.storage.set(k,JSON.stringify(v));}catch{}}
+  get:async k=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch{return null;}},
+  set:async(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 };
 
 const playSound=(type,muted=false)=>{
@@ -97,16 +99,17 @@ function usePomodoro(){
   const[wM,setWM]=useState(25),[bM,setBM]=useState(5),[tot,setTot]=useState(4);
   const[sess,setSess]=useState(1),[work,setWork]=useState(true),[run,setRun]=useState(false);
   const[secs,setSecs]=useState(25*60),[color,setColor]=useState(TIMER_COLORS[0]),[muted,setMuted]=useState(false);
-  const iv=useRef(null),wRef=useRef(25),bRef=useRef(5),totRef=useRef(4),wkRef=useRef(true),ssRef=useRef(1);
+  const iv=useRef(null),wRef=useRef(25),bRef=useRef(5),totRef=useRef(4),wkRef=useRef(true),ssRef=useRef(1),runRef=useRef(false);
   useEffect(()=>{wRef.current=wM;},[wM]);
   useEffect(()=>{bRef.current=bM;},[bM]);
   useEffect(()=>{totRef.current=tot;},[tot]);
+  useEffect(()=>{runRef.current=run;},[run]);
   const reset=(newWM)=>{clearInterval(iv.current);setRun(false);setWork(true);wkRef.current=true;setSess(1);ssRef.current=1;setSecs((newWM!==undefined?newWM:wRef.current)*60);};
   const adjWM=d=>{const n=Math.max(1,Math.min(60,wM+d));setWM(n);wRef.current=n;reset(n);};
   const adjBM=d=>{const n=Math.max(1,Math.min(30,bM+d));setBM(n);bRef.current=n;if(!run)clearInterval(iv.current);};
   const adjTot=n=>{setTot(n);totRef.current=n;};
-  const setWorkMinutes=n=>{const c=Math.max(1,Math.min(60,n));setWM(c);wRef.current=c;if(!run)setSecs(c*60);};
-  const setBreakMinutes=n=>{const c=Math.max(1,Math.min(30,n));setBM(c);bRef.current=c;if(!run&&!wkRef.current)setSecs(c*60);};
+  const setWorkMinutes=useCallback(n=>{const c=Math.max(1,Math.min(60,n));setWM(c);wRef.current=c;if(!runRef.current)setSecs(c*60);},[]);
+  const setBreakMinutes=useCallback(n=>{const c=Math.max(1,Math.min(30,n));setBM(c);bRef.current=c;if(!runRef.current&&!wkRef.current)setSecs(c*60);},[]);
   useEffect(()=>{
     if(!run){clearInterval(iv.current);return;}
     iv.current=setInterval(()=>{
@@ -179,7 +182,7 @@ function ProgressBar({done,total}){
         <div style={{height:'100%',borderRadius:99,width:`${pct}%`,transition:'width 0.6s ease-out',
           background:full?`linear-gradient(90deg,${C.success},#3a7a5e)`:`linear-gradient(90deg,#c084d4,${C.primary},${C.primaryDark})`}}/>
       </div>
-      <style>{`@keyframes strikeAnim{from{width:0}to{width:100%}}`}</style>
+
     </div>
   );
 }
@@ -289,7 +292,8 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
   const[showPick,setShowPick]=useState(false),[editName,setEditName]=useState(false),[nameDraft,setNameDraft]=useState('');
   const[editSubId,setEditSubId]=useState(null),[subDraft,setSubDraft]=useState('');
   const[justDoneId,setJustDoneId]=useState(null),[newSubText,setNewSubText]=useState('');
-  const helpTORef=useRef(null);
+  const helpTORef=useRef(null),timerRunRef=useRef(timer.run);
+  useEffect(()=>{timerRunRef.current=timer.run;});
 
   const activeTasks=tasks.filter(t=>!t.completed);
   const at=tasks.find(t=>t.id===activeTaskId&&!t.completed);
@@ -298,7 +302,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
   const totalSecs=timer.work?timer.wM*60:timer.bM*60;
 
   useEffect(()=>()=>{if(helpTORef.current)clearTimeout(helpTORef.current);},[]);
-  useEffect(()=>{const task=tasks.find(t=>t.id===activeTaskId&&!t.completed);if(task&&!timer.run)timer.setWorkMinutes(task.time);},[activeTaskId]);
+  useEffect(()=>{const task=tasks.find(t=>t.id===activeTaskId&&!t.completed);if(task&&!timerRunRef.current)timer.setWorkMinutes(task.time);},[activeTaskId,tasks,timer.setWorkMinutes]);
 
   const toggleSub=useCallback(sid=>{
     setTasks(prev=>{
@@ -341,17 +345,17 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
   const priorityBorderColor=at?PS[at.priority].borderColor:C.border;
 
   return(
-    <div style={{padding:'14px 14px 88px',display:'flex',flexDirection:'column',gap:12}}>
+    <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.15s ease-in-out'}}>
 
       {/* ENERGIA */}
-      <div style={{background:C.card,borderRadius:20,boxShadow:C.shadow,padding:'14px 16px'}}>
+      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:'16px'}}>
         <div style={{fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.07em',textTransform:'uppercase',textAlign:'center',marginBottom:8}}>Poziom energii</div>
         <EnergySelector value={energy} onChange={onSetEnergy}/>
       </div>
 
       {/* AKTYWNE ZADANIE */}
-      <div style={{background:C.card,borderRadius:20,boxShadow:C.shadow,borderLeft:`4px solid ${priorityBorderColor}`,overflow:'hidden'}}>
-        <div style={{padding:'12px 14px 10px'}}>
+      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,borderLeft:`4px solid ${priorityBorderColor}`,overflow:'hidden'}}>
+        <div style={{padding:'16px'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
             <span style={{fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.07em',textTransform:'uppercase'}}>Aktywne zadanie</span>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -382,7 +386,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
           )}
 
           {at?(
-            <>
+            <div key={activeTaskId} style={{animation:'fadeIn 0.15s ease-in-out'}}>
               <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:6}}>
                 {editName?(
                   <input value={nameDraft} onChange={e=>setNameDraft(e.target.value)} autoFocus
@@ -436,7 +440,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
                   </button>
                 </div>
               </div>
-            </>
+            </div>
           ):(
             <div style={{textAlign:'center',padding:'16px 0'}}>
               <p style={{fontSize:13,color:C.textFaint,margin:'0 0 8px'}}>Brak aktywnego zadania</p>
@@ -455,16 +459,16 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
           boxShadow:C.shadowSm,transition:'background 0.2s'}}>
         <Lightbulb size={17}/>{helpLoad?'Szukam pomysłu…':'Zablokowany/a? Pomóż mi'}
       </button>
-      {helpText&&<div style={{background:C.accentLight,border:`1px solid #f0c4ae`,borderRadius:16,padding:'12px 14px'}}>
+      {helpText&&<div style={{background:C.accentLight,border:`1px solid #f0c4ae`,borderRadius:16,padding:'16px'}}>
         <p style={{fontSize:13,color:'#7a3a18',fontWeight:500,margin:0,lineHeight:1.5}}>{helpText}</p>
       </div>}
 
       {/* TIMER LINIOWY */}
-      <div style={{background:C.card,borderRadius:20,boxShadow:C.shadow,padding:'14px 16px'}}>
+      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:'16px'}}>
         <LinearTimer secs={timer.secs} totalSecs={totalSecs} run={timer.run} color={timer.color} sess={timer.sess} tot={timer.tot} work={timer.work}/>
         {/* Ustawienia sesji */}
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',margin:'10px 0 4px',padding:'8px 10px',background:C.bg,borderRadius:12}}>
-          <div style={{display:'flex',alignItems:'center',gap:5}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',margin:'10px 0 4px',padding:'8px 10px',background:C.bg,borderRadius:12,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',gap:5,minWidth:0,overflow:'hidden'}}>
             <span style={{fontSize:11,color:C.textMuted,fontWeight:600}}>Praca:</span>
             <button onClick={()=>timer.adjWM(-1)} disabled={timer.run}
               style={{width:24,height:24,borderRadius:6,border:`1px solid ${C.border}`,background:'none',cursor:timer.run?'not-allowed':'pointer',fontSize:15,fontWeight:700,color:C.textMuted,lineHeight:'22px',textAlign:'center'}}>−</button>
@@ -479,7 +483,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
               </button>
             )}
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
             <span style={{fontSize:11,color:C.textMuted,fontWeight:600,marginRight:2}}>Sesje:</span>
             {[1,2,3,4].map(n=>(
               <button key={n} onClick={()=>timer.adjTot(n)} disabled={timer.run}
@@ -513,6 +517,98 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
 }
 
 // ═══════════════════════════════════════════════════════
+// TASK CARD
+// ═══════════════════════════════════════════════════════
+function TaskCard({task,activeTaskId,fadingId,updateTasks,restoreTask,completeTask,startTask,toggleExpand,toggleSub,addSub,deleteTask}){
+  const[ns,setNs]=useState(''),[showEd,setShowEd]=useState(false);
+  const[ed,setEd]=useState({priority:task.priority,time:task.time,deadline:task.deadline||'',startTime:task.startTime||'',endTime:task.endTime||''});
+  const isActive=task.id===activeTaskId,isFading=task.id===fadingId;
+  const dc=task.substeps.filter(s=>s.done).length;
+  const hEC=(f,v)=>{const u={...ed,[f]:v};if(f==='startTime'||f==='endTime'){const d=timeDiff(u.startTime,u.endTime);if(d)u.time=d;}setEd(u);};
+  const saveEdit=()=>{updateTasks(prev=>prev.map(t=>t.id===task.id?{...t,priority:ed.priority,time:Number(ed.time),deadline:ed.deadline||null,startTime:ed.startTime||null,endTime:ed.endTime||null}:t));setShowEd(false);};
+  const tl=task.startTime&&task.endTime?`${task.startTime}–${task.endTime}`:`${task.time}min`;
+  return(
+    <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,borderLeft:`3px solid ${isActive?C.primary:'transparent'}`,
+      transition:'all 0.48s',opacity:isFading?0.08:1,transform:isFading?'translateX(-12px) scale(0.96)':'none',overflow:'hidden',animation:isFading?'none':'slideUp 0.2s ease-out'}}>
+      <div style={{padding:'12px 16px'}}>
+        <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+          <button onClick={()=>task.completed?restoreTask(task.id):completeTask(task.id)}
+            style={{flexShrink:0,marginTop:2,width:18,height:18,borderRadius:5,border:`2px solid ${task.completed?C.success:C.border}`,background:task.completed?C.success:'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'all 0.2s'}}>
+            {task.completed&&<Check size={10} color="#fff"/>}
+          </button>
+          <div style={{flex:1,minWidth:0}}>
+            <p style={{fontSize:13,fontWeight:600,color:task.completed?C.textFaint:C.text,textDecoration:task.completed?'line-through':'none',margin:0,wordBreak:'break-word',lineHeight:1.35}}>{task.name}</p>
+            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:5,marginTop:4}}>
+              <span style={{fontSize:11,color:C.textMuted}}>{tl}</span>
+              <PBadge priority={task.priority}/>
+              {task.substeps.length>0&&<span style={{fontSize:11,color:C.textFaint}}>{dc}/{task.substeps.length} kroków</span>}
+              {task.deadline&&<span style={{fontSize:11,color:C.textFaint,display:'flex',alignItems:'center',gap:2}}><Calendar size={10}/>{task.deadline}</span>}
+            </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
+            {!task.completed&&<button onClick={()=>startTask(task.id)}
+              style={{fontSize:11,fontWeight:700,padding:'4px 9px',borderRadius:8,border:'none',cursor:'pointer',background:isActive?C.primaryLight:C.primary,color:isActive?C.primaryDark:'#fff'}}>
+              {isActive?'Aktywne':'Start'}
+            </button>}
+            {task.completed&&<button onClick={()=>restoreTask(task.id)} style={{fontSize:11,padding:'4px 8px',borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,color:C.textMuted,cursor:'pointer'}}>Przywróć</button>}
+            <button onClick={()=>toggleExpand(task.id)} style={{background:'none',border:'none',cursor:'pointer',color:C.textFaint,padding:3}}>{task.expanded?<ChevronUp size={14}/>:<ChevronDown size={14}/>}</button>
+            <button onClick={()=>deleteTask(task.id)} style={{background:'none',border:'none',cursor:'pointer',color:C.border,padding:3}}><Trash2 size={12}/></button>
+          </div>
+        </div>
+      </div>
+      {task.expanded&&(
+        <div style={{borderTop:`1px solid ${C.borderLight}`,padding:'12px 16px',display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:11,color:C.textMuted,fontWeight:600}}>Ustawienia</span>
+            <button onClick={()=>{if(!showEd)setEd({priority:task.priority,time:task.time,deadline:task.deadline||'',startTime:task.startTime||'',endTime:task.endTime||''});setShowEd(v=>!v);}} style={{display:'flex',alignItems:'center',gap:3,fontSize:11,color:C.primary,background:'none',border:'none',cursor:'pointer',fontWeight:600}}>
+              <Pencil size={10}/>{showEd?'Zwiń':'Edytuj'}
+            </button>
+          </div>
+          {showEd&&(
+            <div style={{background:C.bg,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <div><label style={lbl}>Priorytet</label>
+                  <select value={ed.priority} onChange={e=>setEd({...ed,priority:e.target.value})} style={{...inp,cursor:'pointer'}}>
+                    <option value="high">Wysoki</option><option value="medium">Średni</option><option value="low">Niski</option>
+                  </select></div>
+                <div><label style={lbl}>Czas (min)</label><input type="number" min="1" value={ed.time} onChange={e=>setEd({...ed,time:Number(e.target.value)})} style={inp}/></div>
+              </div>
+              <div><label style={lbl}>Termin</label><input type="date" value={ed.deadline} onChange={e=>hEC('deadline',e.target.value)} style={inp}/></div>
+              <TimeRangeInputs startTime={ed.startTime} endTime={ed.endTime} onChange={hEC}/>
+              {ed.deadline&&<a href={buildGcalUrl(task.name,ed.deadline,Number(ed.time),ed.startTime||null,ed.endTime||null)} target="_blank" rel="noopener noreferrer"
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'#eaf0fd',border:'1px solid #c5d4f5',color:'#3b5fd4',borderRadius:8,padding:'7px',fontSize:11,fontWeight:600,textDecoration:'none'}}>
+                <Calendar size={11}/>Dodaj do Google Calendar
+              </a>}
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={saveEdit} style={{flex:1,background:C.primary,color:'#fff',border:'none',borderRadius:8,padding:'7px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}><Check size={11}/>Zapisz</button>
+                <button onClick={()=>setShowEd(false)} style={{padding:'7px 12px',background:C.borderLight,border:'none',borderRadius:8,fontSize:12,color:C.textMuted,cursor:'pointer'}}>Anuluj</button>
+              </div>
+            </div>
+          )}
+          {task.substeps.length>0&&<div style={{display:'flex',flexDirection:'column',gap:3}}>
+            {task.substeps.map(s=>(
+              <button key={s.id} onClick={()=>toggleSub(task.id,s.id)}
+                style={{display:'flex',alignItems:'center',gap:7,padding:'6px 8px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',background:s.done?C.successLight:C.bg,transition:'background 0.15s'}}>
+                <div style={{width:12,height:12,borderRadius:3,border:`2px solid ${s.done?C.success:C.border}`,background:s.done?C.success:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  {s.done&&<Check size={7} color="#fff"/>}
+                </div>
+                <span style={{fontSize:12,color:s.done?C.success:C.textMuted,textDecoration:s.done?'line-through':'none',opacity:s.done?0.7:1,flex:1,wordBreak:'break-word'}}>{s.text}</span>
+              </button>
+            ))}
+          </div>}
+          <div style={{display:'flex',gap:5}}>
+            <input value={ns} onChange={e=>setNs(e.target.value)} placeholder="Dodaj podkrok…"
+              style={{...inp,padding:'6px 10px',fontSize:12,flex:1,width:'auto'}}
+              onKeyDown={e=>{if(e.key==='Enter'){addSub(task.id,ns);setNs('');}}}/>
+            <button onClick={()=>{addSub(task.id,ns);setNs('');}} style={{background:C.primaryLight,color:C.primary,border:'none',borderRadius:8,padding:'6px 10px',cursor:'pointer'}}><Plus size={13}/></button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // TASKS VIEW
 // ═══════════════════════════════════════════════════════
 function TasksView({tasks,setTasks,activeTaskId,setActiveTaskId,setActiveView}){
@@ -540,110 +636,19 @@ function TasksView({tasks,setTasks,activeTaskId,setActiveTaskId,setActiveView}){
     setTimeout(()=>{updateTasks(prev=>prev.map(t=>t.id===id?{...t,completed:true}:t));setActiveTaskId(prev=>{if(prev===id){store.set('adhd-active-task',null);return null;}return prev;});setFadingId(null);},480);
   };
 
-  const inp={border:`1px solid ${C.border}`,borderRadius:10,padding:'8px 10px',fontSize:13,outline:'none',background:C.bg,color:C.text,width:'100%',boxSizing:'border-box'};
-  const lbl={fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.06em',textTransform:'uppercase',display:'block',marginBottom:4};
-
-  function TaskCard({task}){
-    const[ns,setNs]=useState(''),[showEd,setShowEd]=useState(false);
-    const[ed,setEd]=useState({priority:task.priority,time:task.time,deadline:task.deadline||'',startTime:task.startTime||'',endTime:task.endTime||''});
-    const isActive=task.id===activeTaskId,isFading=task.id===fadingId;
-    const dc=task.substeps.filter(s=>s.done).length;
-    const hEC=(f,v)=>{const u={...ed,[f]:v};if(f==='startTime'||f==='endTime'){const d=timeDiff(u.startTime,u.endTime);if(d)u.time=d;}setEd(u);};
-    const saveEdit=()=>{updateTasks(prev=>prev.map(t=>t.id===task.id?{...t,priority:ed.priority,time:Number(ed.time),deadline:ed.deadline||null,startTime:ed.startTime||null,endTime:ed.endTime||null}:t));setShowEd(false);};
-    const tl=task.startTime&&task.endTime?`${task.startTime}–${task.endTime}`:`${task.time}min`;
-    return(
-      <div style={{background:C.card,borderRadius:14,boxShadow:C.shadowSm,borderLeft:`3px solid ${isActive?C.primary:'transparent'}`,
-        transition:'all 0.48s',opacity:isFading?0.08:1,transform:isFading?'translateX(-12px) scale(0.96)':'none',overflow:'hidden'}}>
-        <div style={{padding:'10px 12px'}}>
-          <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
-            <button onClick={()=>task.completed?restoreTask(task.id):completeTask(task.id)}
-              style={{flexShrink:0,marginTop:2,width:18,height:18,borderRadius:5,border:`2px solid ${task.completed?C.success:C.border}`,background:task.completed?C.success:'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'all 0.2s'}}>
-              {task.completed&&<Check size={10} color="#fff"/>}
-            </button>
-            <div style={{flex:1,minWidth:0}}>
-              <p style={{fontSize:13,fontWeight:600,color:task.completed?C.textFaint:C.text,textDecoration:task.completed?'line-through':'none',margin:0,wordBreak:'break-word',lineHeight:1.35}}>{task.name}</p>
-              <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:5,marginTop:4}}>
-                <span style={{fontSize:11,color:C.textMuted}}>{tl}</span>
-                <PBadge priority={task.priority}/>
-                {task.substeps.length>0&&<span style={{fontSize:11,color:C.textFaint}}>{dc}/{task.substeps.length} kroków</span>}
-                {task.deadline&&<span style={{fontSize:11,color:C.textFaint,display:'flex',alignItems:'center',gap:2}}><Calendar size={10}/>{task.deadline}</span>}
-              </div>
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
-              {!task.completed&&<button onClick={()=>startTask(task.id)}
-                style={{fontSize:11,fontWeight:700,padding:'4px 9px',borderRadius:8,border:'none',cursor:'pointer',background:isActive?C.primaryLight:C.primary,color:isActive?C.primaryDark:'#fff'}}>
-                {isActive?'Aktywne':'Start'}
-              </button>}
-              {task.completed&&<button onClick={()=>restoreTask(task.id)} style={{fontSize:11,padding:'4px 8px',borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,color:C.textMuted,cursor:'pointer'}}>Przywróć</button>}
-              <button onClick={()=>toggleExpand(task.id)} style={{background:'none',border:'none',cursor:'pointer',color:C.textFaint,padding:3}}>{task.expanded?<ChevronUp size={14}/>:<ChevronDown size={14}/>}</button>
-              <button onClick={()=>deleteTask(task.id)} style={{background:'none',border:'none',cursor:'pointer',color:C.border,padding:3}}><Trash2 size={12}/></button>
-            </div>
-          </div>
-        </div>
-        {task.expanded&&(
-          <div style={{borderTop:`1px solid ${C.borderLight}`,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:11,color:C.textMuted,fontWeight:600}}>Ustawienia</span>
-              <button onClick={()=>setShowEd(v=>!v)} style={{display:'flex',alignItems:'center',gap:3,fontSize:11,color:C.primary,background:'none',border:'none',cursor:'pointer',fontWeight:600}}>
-                <Pencil size={10}/>{showEd?'Zwiń':'Edytuj'}
-              </button>
-            </div>
-            {showEd&&(
-              <div style={{background:C.bg,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8}}>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                  <div><label style={lbl}>Priorytet</label>
-                    <select value={ed.priority} onChange={e=>setEd({...ed,priority:e.target.value})} style={{...inp,cursor:'pointer'}}>
-                      <option value="high">Wysoki</option><option value="medium">Średni</option><option value="low">Niski</option>
-                    </select></div>
-                  <div><label style={lbl}>Czas (min)</label><input type="number" min="1" value={ed.time} onChange={e=>setEd({...ed,time:Number(e.target.value)})} style={inp}/></div>
-                </div>
-                <div><label style={lbl}>Termin</label><input type="date" value={ed.deadline} onChange={e=>hEC('deadline',e.target.value)} style={inp}/></div>
-                <TimeRangeInputs startTime={ed.startTime} endTime={ed.endTime} onChange={hEC}/>
-                {ed.deadline&&<a href={buildGcalUrl(task.name,ed.deadline,Number(ed.time),ed.startTime||null,ed.endTime||null)} target="_blank" rel="noopener noreferrer"
-                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'#eaf0fd',border:'1px solid #c5d4f5',color:'#3b5fd4',borderRadius:8,padding:'7px',fontSize:11,fontWeight:600,textDecoration:'none'}}>
-                  <Calendar size={11}/>Dodaj do Google Calendar
-                </a>}
-                <div style={{display:'flex',gap:6}}>
-                  <button onClick={saveEdit} style={{flex:1,background:C.primary,color:'#fff',border:'none',borderRadius:8,padding:'7px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}><Check size={11}/>Zapisz</button>
-                  <button onClick={()=>setShowEd(false)} style={{padding:'7px 12px',background:C.borderLight,border:'none',borderRadius:8,fontSize:12,color:C.textMuted,cursor:'pointer'}}>Anuluj</button>
-                </div>
-              </div>
-            )}
-            {task.substeps.length>0&&<div style={{display:'flex',flexDirection:'column',gap:3}}>
-              {task.substeps.map(s=>(
-                <button key={s.id} onClick={()=>toggleSub(task.id,s.id)}
-                  style={{display:'flex',alignItems:'center',gap:7,padding:'6px 8px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',background:s.done?C.successLight:C.bg,transition:'background 0.15s'}}>
-                  <div style={{width:12,height:12,borderRadius:3,border:`2px solid ${s.done?C.success:C.border}`,background:s.done?C.success:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                    {s.done&&<Check size={7} color="#fff"/>}
-                  </div>
-                  <span style={{fontSize:12,color:s.done?C.success:C.textMuted,textDecoration:s.done?'line-through':'none',opacity:s.done?0.7:1,flex:1,wordBreak:'break-word'}}>{s.text}</span>
-                </button>
-              ))}
-            </div>}
-            <div style={{display:'flex',gap:5}}>
-              <input value={ns} onChange={e=>setNs(e.target.value)} placeholder="Dodaj podkrok…"
-                style={{...inp,padding:'6px 10px',fontSize:12,flex:1,width:'auto'}}
-                onKeyDown={e=>{if(e.key==='Enter'){addSub(task.id,ns);setNs('');}}}/>
-              <button onClick={()=>{addSub(task.id,ns);setNs('');}} style={{background:C.primaryLight,color:C.primary,border:'none',borderRadius:8,padding:'6px 10px',cursor:'pointer'}}><Plus size={13}/></button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
+  const cardProps={activeTaskId,fadingId,updateTasks,restoreTask,completeTask,startTask,toggleExpand,toggleSub,addSub,deleteTask};
   const tabBtn=(k,l)=><button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:'8px',borderRadius:10,border:'none',cursor:'pointer',fontSize:13,fontWeight:700,background:tab===k?C.primary:C.card,color:tab===k?'#fff':C.textMuted,boxShadow:tab===k?'none':C.shadowSm,transition:'all 0.2s'}}>{l}</button>;
 
   return(
-    <div style={{padding:'14px 14px 88px',display:'flex',flexDirection:'column',gap:10}}>
+    <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:10,animation:'fadeIn 0.15s ease-in-out'}}>
       <div style={{display:'flex',gap:8}}>{tabBtn('active','Aktywne')}{tabBtn('done','Ukończone')}</div>
       {tab==='active'?(
         <>
           {['today','week','someday'].map(g=>{const gt=activeTasks.filter(t=>t.group===g);if(!gt.length)return null;
-            return (<div key={g}><div style={{fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:6,paddingLeft:2}}>{GL[g]}</div><div style={{display:'flex',flexDirection:'column',gap:6}}>{gt.map(t=><TaskCard key={t.id} task={t}/>)}</div></div>);})}
+            return (<div key={g}><div style={{fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:6,paddingLeft:2}}>{GL[g]}</div><div style={{display:'flex',flexDirection:'column',gap:6}}>{gt.map(t=><TaskCard key={t.id} task={t} {...cardProps}/>)}</div></div>);})}
           {activeTasks.length===0&&<p style={{textAlign:'center',color:C.textFaint,fontSize:13,padding:'24px 0'}}>Brak aktywnych zadań 🎉</p>}
           {showForm?(
-            <div style={{background:C.card,borderRadius:16,boxShadow:C.shadow,padding:16,display:'flex',flexDirection:'column',gap:10}}>
+            <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:'16px',display:'flex',flexDirection:'column',gap:10}}>
               <input value={form.name} onChange={e=>hFC('name',e.target.value)} placeholder="Nazwa zadania" autoFocus
                 style={{border:`1.5px solid ${C.primary}`,borderRadius:10,padding:'9px 12px',fontSize:14,outline:'none',background:C.bg,color:C.text,width:'100%',boxSizing:'border-box'}}/>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -689,7 +694,7 @@ function TasksView({tasks,setTasks,activeTaskId,setActiveTaskId,setActiveView}){
           </div>
         </>
       ):<div style={{display:'flex',flexDirection:'column',gap:6}}>
-        {doneTasks.length===0?<p style={{textAlign:'center',color:C.textFaint,fontSize:13,padding:'32px 0'}}>Brak ukończonych zadań</p>:doneTasks.map(t=><TaskCard key={t.id} task={t}/>)}
+        {doneTasks.length===0?<p style={{textAlign:'center',color:C.textFaint,fontSize:13,padding:'32px 0'}}>Brak ukończonych zadań</p>:doneTasks.map(t=><TaskCard key={t.id} task={t} {...cardProps}/>)}
       </div>}
       {toast&&<div style={{position:'fixed',bottom:70,left:'50%',transform:'translateX(-50%)',background:C.text,color:'#fff',fontSize:13,borderRadius:14,padding:'9px 18px',boxShadow:C.shadow,zIndex:50,whiteSpace:'nowrap'}}>{toast}</div>}
     </div>
@@ -706,8 +711,8 @@ function TimerView({timer}){
   const full=work?wM*60:bM*60,r=90,circ=2*Math.PI*r;
   const off=(run||secs<full)?circ*(1-secs/full):0;
   return(
-    <div style={{padding:'14px 14px 88px',display:'flex',flexDirection:'column',gap:12}}>
-      <div style={{background:C.card,borderRadius:20,boxShadow:C.shadow,padding:'20px 16px',display:'flex',flexDirection:'column',alignItems:'center'}}>
+    <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.15s ease-in-out'}}>
+      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:'20px 16px',display:'flex',flexDirection:'column',alignItems:'center'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
           <span style={{fontSize:22}}>{work?'🎯':'☕'}</span>
           <span style={{fontSize:17,fontWeight:800,color:C.text}}>{work?'Praca':'Przerwa'}</span>
@@ -742,7 +747,7 @@ function TimerView({timer}){
           <button onClick={()=>reset()} style={{padding:'12px 14px',background:C.bg,border:`1px solid ${C.border}`,borderRadius:14,cursor:'pointer'}}><RotateCcw size={17} color={C.textMuted}/></button>
         </div>
       </div>
-      <button onClick={()=>setSt(v=>!v)} style={{width:'100%',background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:'11px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:13,fontWeight:700,color:C.textMuted,cursor:'pointer',boxShadow:C.shadowSm}}>
+      <button onClick={()=>setSt(v=>!v)} style={{width:'100%',background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:'11px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:13,fontWeight:700,color:C.textMuted,cursor:'pointer',boxShadow:C.shadowSm}}>
         <span style={{display:'flex',alignItems:'center',gap:6}}><Settings size={14}/>Ustawienia</span>
         {showSet?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
       </button>
@@ -815,15 +820,15 @@ function AIView({chatMessages,setChatMessages,energy,onSetEnergy,todayGoal,tasks
   },[setTasks]);
   const onTA=e=>{setInput(e.target.value);const ta=taRef.current;if(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,84)+'px';}};
   return(
-    <div style={{display:'flex',flexDirection:'column',height:'100vh',paddingBottom:56}}>
-      <div style={{background:C.card,boxShadow:C.shadowSm,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+    <div style={{flex:1,display:'flex',flexDirection:'column',animation:'fadeIn 0.15s ease-in-out'}}>
+      <div style={{background:C.card,boxShadow:C.shadowSm,padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}><Brain size={19} color={C.primary}/><span style={{fontSize:16,fontWeight:800,color:C.text}}>Asystent AI</span></div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <EnergySelector value={energy} onChange={onSetEnergy} compact/>
           <button onClick={clearChat} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:'5px 7px',cursor:'pointer',display:'flex',alignItems:'center'}}><RotateCw size={13} color={C.textMuted}/></button>
         </div>
       </div>
-      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px',background:C.bg}}>
+      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'16px',background:C.bg}}>
         {chatMessages.length===0&&(
           <div style={{display:'flex',flexDirection:'column',gap:7,paddingTop:8}}>
             <p style={{textAlign:'center',color:C.textFaint,fontSize:13,marginBottom:8}}>Jak mogę Ci dzisiaj pomóc? 🧠</p>
@@ -839,14 +844,14 @@ function AIView({chatMessages,setChatMessages,energy,onSetEnergy,todayGoal,tasks
             </div>
           </div>
         )}
-        <style>{`@keyframes dotBounce{0%,80%,100%{transform:scale(0.7)}40%{transform:scale(1.1)}}`}</style>
+
         {userCount>=LIMIT&&<div style={{background:C.accentLight,border:`1px solid #f0c4ae`,borderRadius:14,padding:'10px 12px',textAlign:'center'}}>
           <p style={{fontSize:12,color:'#7a3a18',margin:'0 0 4px'}}>Limit {LIMIT} wiadomości osiągnięty.</p>
           <button onClick={clearChat} style={{fontSize:12,color:C.accent,fontWeight:700,background:'none',border:'none',cursor:'pointer'}}>Wyczyść historię ↺</button>
         </div>}
         <div ref={endRef}/>
       </div>
-      <div style={{background:C.card,borderTop:`1px solid ${C.border}`,padding:'10px 12px',flexShrink:0}}>
+      <div style={{background:C.card,borderTop:`1px solid ${C.border}`,padding:'10px 16px',flexShrink:0}}>
         <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
           <textarea ref={taRef} value={input} onChange={onTA}
             onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send(input);}}}
@@ -888,7 +893,7 @@ export default function App(){
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:C.bg}}>
       <div style={{textAlign:'center'}}>
         <div style={{width:36,height:36,border:`3px solid ${C.primary}`,borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',margin:'0 auto 10px'}}/>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
         <p style={{fontSize:13,color:C.primary,fontWeight:600,margin:0}}>Ładowanie…</p>
       </div>
     </div>
@@ -898,24 +903,26 @@ export default function App(){
   const cp={tasks,setTasks,activeTaskId:actId,setActiveTaskId:setActId};
 
   return(
-    <div style={{minHeight:'100vh',background:C.bg,maxWidth:560,margin:'0 auto',position:'relative',fontFamily:'system-ui,sans-serif'}}>
-      <div style={{minHeight:'100vh',overflowY:'auto',overflowX:'hidden'}}>
+    <div style={{background:'#000000',minHeight:'100vh'}}>
+    <div style={{maxWidth:430,width:'100%',margin:'15px auto',height:'calc(100vh - 30px)',borderRadius:24,overflow:'hidden',boxShadow:'0 0 40px rgba(255,255,255,0.15), 0 0 80px rgba(255,255,255,0.05)',background:C.bg,display:'flex',flexDirection:'column',fontFamily:'system-ui,sans-serif'}}>
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
         {view==='home'  &&<HomeView  {...cp} energy={energy} onSetEnergy={setEn} timer={timer} setActiveView={setView}/>}
         {view==='tasks' &&<TasksView {...cp} setActiveView={setView}/>}
         {view==='timer' &&<TimerView timer={timer}/>}
         {view==='ai'    &&<AIView chatMessages={chat} setChatMessages={setChat} energy={energy} onSetEnergy={setEn} todayGoal="" tasks={tasks} activeTaskId={actId} setTasks={setTasks}/>}
       </div>
-      <nav style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:560,height:56,background:C.card,borderTop:`1px solid ${C.border}`,display:'flex',zIndex:40,boxShadow:'0 -2px 12px rgba(39,33,28,0.08)'}}>
+      <nav style={{width:'100%',height:56,background:C.card,borderTop:`1px solid ${C.border}`,display:'flex',flexShrink:0,boxShadow:'0 -2px 12px rgba(39,33,28,0.08)'}}>
         {NAV.map(n=>(
           <button key={n.id} onClick={()=>setView(n.id)}
             style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,border:'none',background:'none',cursor:'pointer',
-              color:view===n.id?C.primary:C.textFaint,transition:'color 0.15s',position:'relative'}}>
+              color:view===n.id?C.primary:C.textFaint,transition:'all 0.2s',position:'relative'}}>
             {n.icon}
             <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.04em',textTransform:'uppercase'}}>{n.lbl}</span>
             {view===n.id&&<div style={{position:'absolute',top:0,left:'25%',right:'25%',height:2,background:C.primary,borderRadius:'0 0 2px 2px'}}/>}
           </button>
         ))}
       </nav>
+    </div>
     </div>
   );
 }

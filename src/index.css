@@ -109,3 +109,20 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* ─── APP OVERRIDES ─── */
+#root { width: 100%; max-width: 100%; margin: 0; text-align: left; border-inline: none; }
+body { background: #000000; min-height: 100vh; margin: 0; }
+button { transition: all 0.2s ease-in-out; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes strikeAnim { from { width: 0; } to { width: 100%; } }
+@keyframes dotBounce { 0%,80%,100% { transform: scale(0.7); } 40% { transform: scale(1.1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
