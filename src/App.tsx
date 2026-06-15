@@ -110,6 +110,7 @@ function usePomodoro(){
   const adjTot=n=>{setTot(n);totRef.current=n;};
   const setWorkMinutes=useCallback(n=>{const c=Math.max(1,Math.min(60,n));setWM(c);wRef.current=c;if(!runRef.current)setSecs(c*60);},[]);
   const setBreakMinutes=useCallback(n=>{const c=Math.max(1,Math.min(30,n));setBM(c);bRef.current=c;if(!runRef.current&&!wkRef.current)setSecs(c*60);},[]);
+  const setSecsDirectly=useCallback(s=>{if(!runRef.current)setSecs(Math.max(1,s));},[]);
   useEffect(()=>{
     if(!run){clearInterval(iv.current);return;}
     iv.current=setInterval(()=>{
@@ -121,7 +122,7 @@ function usePomodoro(){
     },1000);
     return()=>clearInterval(iv.current);
   },[run,muted]);
-  return{wM,bM,tot,sess,work,run,setRun,secs,color,setColor,muted,setMuted,reset,adjWM,adjBM,adjTot,setWorkMinutes,setBreakMinutes};
+  return{wM,bM,tot,sess,work,run,setRun,secs,color,setColor,muted,setMuted,reset,adjWM,adjBM,adjTot,setWorkMinutes,setBreakMinutes,setSecsDirectly};
 }
 
 // ─── SUB-COMPONENTS ───────────────────────────────────
@@ -322,9 +323,14 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
 
   const addSubstep=()=>{
     if(!newSubText.trim()||!activeTaskId)return;
+    const cur=tasks.find(t=>t.id===activeTaskId);
+    if(cur&&cur.substeps.length>=10)return;
     setTasks(prev=>{const u=prev.map(t=>t.id===activeTaskId?{...t,substeps:[...t.substeps,{id:Date.now().toString(),text:newSubText.trim(),done:false}]}:t);store.set('adhd-tasks',u);return u;});
     setNewSubText('');
   };
+  const deleteSubstep=useCallback(sid=>{
+    setTasks(prev=>{const u=prev.map(t=>t.id!==activeTaskId?t:{...t,substeps:t.substeps.filter(s=>s.id!==sid)});store.set('adhd-tasks',u);return u;});
+  },[activeTaskId]);
 
   const getHelp=async()=>{
     if(helpLoad)return;setHelpLoad(true);setHelpText(null);
@@ -345,7 +351,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
   const priorityBorderColor=at?PS[at.priority].borderColor:C.border;
 
   return(
-    <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.15s ease-in-out'}}>
+    <div style={{flex:1,minHeight:0,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.15s ease-in-out'}}>
 
       {/* ENERGIA */}
       <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:'16px'}}>
@@ -354,7 +360,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
       </div>
 
       {/* AKTYWNE ZADANIE */}
-      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,borderLeft:`4px solid ${priorityBorderColor}`,overflow:'hidden'}}>
+      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,borderLeft:`4px solid ${priorityBorderColor}`}}>
         <div style={{padding:'16px'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
             <span style={{fontSize:10,fontWeight:700,color:C.textFaint,letterSpacing:'0.07em',textTransform:'uppercase'}}>Aktywne zadanie</span>
@@ -369,7 +375,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
           </div>
 
           {showPick&&(
-            <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:'hidden',marginBottom:10}}>
+            <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:'hidden',marginBottom:10,maxHeight:180,overflowY:'auto'}}>
               {activeTasks.length===0
                 ?<p style={{fontSize:12,color:C.textFaint,textAlign:'center',padding:'10px',margin:0}}>Brak aktywnych zadań</p>
                 :activeTasks.map((t,i)=>(
@@ -426,9 +432,12 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
                       <button onClick={()=>{setSubDraft(s.text);setEditSubId(s.id);}}
                         style={{background:'none',border:'none',cursor:'pointer',color:C.border,padding:2,flexShrink:0,opacity:0.7}}><Pencil size={11}/></button>
                     )}
+                    <button onClick={()=>deleteSubstep(s.id)}
+                      style={{background:'none',border:'none',cursor:'pointer',color:C.border,padding:2,flexShrink:0,opacity:0.55}}><X size={11}/></button>
                   </div>
                 ))}
                 {/* Dodaj podkrok */}
+                {at.substeps.length<10?(
                 <div style={{display:'flex',gap:6,marginTop:2}}>
                   <input value={newSubText} onChange={e=>setNewSubText(e.target.value)} placeholder="Dodaj podkrok…"
                     style={{flex:1,border:`1px dashed ${C.border}`,borderRadius:8,padding:'6px 10px',fontSize:12,outline:'none',background:'transparent',color:C.text}}
@@ -439,6 +448,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
                     <Plus size={14}/>
                   </button>
                 </div>
+                ):<p style={{fontSize:11,color:C.textFaint,textAlign:'center',margin:'4px 0 0'}}>Limit 10 podzadań osiągnięty</p>}
               </div>
             </div>
           ):(
@@ -519,7 +529,7 @@ function HomeView({tasks,setTasks,activeTaskId,setActiveTaskId,energy,onSetEnerg
 // ═══════════════════════════════════════════════════════
 // TASK CARD
 // ═══════════════════════════════════════════════════════
-function TaskCard({task,activeTaskId,fadingId,updateTasks,restoreTask,completeTask,startTask,toggleExpand,toggleSub,addSub,deleteTask}){
+function TaskCard({task,activeTaskId,fadingId,updateTasks,restoreTask,completeTask,startTask,toggleExpand,toggleSub,addSub,deleteSub,deleteTask}){
   const[ns,setNs]=useState(''),[showEd,setShowEd]=useState(false);
   const[ed,setEd]=useState({priority:task.priority,time:task.time,deadline:task.deadline||'',startTime:task.startTime||'',endTime:task.endTime||''});
   const isActive=task.id===activeTaskId,isFading=task.id===fadingId;
@@ -587,21 +597,25 @@ function TaskCard({task,activeTaskId,fadingId,updateTasks,restoreTask,completeTa
           )}
           {task.substeps.length>0&&<div style={{display:'flex',flexDirection:'column',gap:3}}>
             {task.substeps.map(s=>(
-              <button key={s.id} onClick={()=>toggleSub(task.id,s.id)}
-                style={{display:'flex',alignItems:'center',gap:7,padding:'6px 8px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',background:s.done?C.successLight:C.bg,transition:'background 0.15s'}}>
-                <div style={{width:12,height:12,borderRadius:3,border:`2px solid ${s.done?C.success:C.border}`,background:s.done?C.success:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <div key={s.id} style={{display:'flex',alignItems:'center',gap:7,padding:'6px 8px',borderRadius:8,background:s.done?C.successLight:C.bg,transition:'background 0.15s'}}>
+                <button onClick={()=>toggleSub(task.id,s.id)}
+                  style={{width:12,height:12,borderRadius:3,border:`2px solid ${s.done?C.success:C.border}`,background:s.done?C.success:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,cursor:'pointer',padding:0}}>
                   {s.done&&<Check size={7} color="#fff"/>}
-                </div>
+                </button>
                 <span style={{fontSize:12,color:s.done?C.success:C.textMuted,textDecoration:s.done?'line-through':'none',opacity:s.done?0.7:1,flex:1,wordBreak:'break-word'}}>{s.text}</span>
-              </button>
+                <button onClick={()=>deleteSub(task.id,s.id)}
+                  style={{background:'none',border:'none',cursor:'pointer',color:C.border,padding:2,flexShrink:0,opacity:0.55}}><X size={11}/></button>
+              </div>
             ))}
           </div>}
+          {task.substeps.length<10?(
           <div style={{display:'flex',gap:5}}>
             <input value={ns} onChange={e=>setNs(e.target.value)} placeholder="Dodaj podkrok…"
               style={{...inp,padding:'6px 10px',fontSize:12,flex:1,width:'auto'}}
-              onKeyDown={e=>{if(e.key==='Enter'){addSub(task.id,ns);setNs('');}}}/>
-            <button onClick={()=>{addSub(task.id,ns);setNs('');}} style={{background:C.primaryLight,color:C.primary,border:'none',borderRadius:8,padding:'6px 10px',cursor:'pointer'}}><Plus size={13}/></button>
+              onKeyDown={e=>{if(e.key==='Enter'&&ns.trim()){addSub(task.id,ns);setNs('');}}}/>
+            <button onClick={()=>{if(ns.trim()){addSub(task.id,ns);setNs('');}}} style={{background:C.primaryLight,color:C.primary,border:'none',borderRadius:8,padding:'6px 10px',cursor:'pointer'}}><Plus size={13}/></button>
           </div>
+          ):<p style={{fontSize:11,color:C.textFaint,textAlign:'center',margin:'4px 0 0'}}>Limit 10 podzadań osiągnięty</p>}
         </div>
       )}
     </div>
@@ -630,17 +644,18 @@ function TasksView({tasks,setTasks,activeTaskId,setActiveTaskId,setActiveView}){
   const toggleExpand=id=>updateTasks(prev=>prev.map(t=>t.id===id?{...t,expanded:!t.expanded}:t));
   const startTask=id=>{setActiveTaskId(id);store.set('adhd-active-task',id);setActiveView('home');};
   const toggleSub=(tid,sid)=>updateTasks(prev=>prev.map(t=>t.id===tid?{...t,substeps:t.substeps.map(s=>s.id===sid?{...s,done:!s.done}:s)}:t));
-  const addSub=(tid,txt)=>{if(!txt.trim())return;updateTasks(prev=>prev.map(t=>t.id===tid?{...t,substeps:[...t.substeps,{id:Date.now().toString(),text:txt,done:false}]}:t));};
+  const addSub=(tid,txt)=>{if(!txt.trim())return;updateTasks(prev=>prev.map(t=>t.id===tid&&t.substeps.length<10?{...t,substeps:[...t.substeps,{id:Date.now().toString(),text:txt,done:false}]}:t));};
+  const deleteSub=useCallback((tid,sid)=>updateTasks(prev=>prev.map(t=>t.id===tid?{...t,substeps:t.substeps.filter(s=>s.id!==sid)}:t)),[updateTasks]);
   const completeTask=id=>{
     setFadingId(id);
     setTimeout(()=>{updateTasks(prev=>prev.map(t=>t.id===id?{...t,completed:true}:t));setActiveTaskId(prev=>{if(prev===id){store.set('adhd-active-task',null);return null;}return prev;});setFadingId(null);},480);
   };
 
-  const cardProps={activeTaskId,fadingId,updateTasks,restoreTask,completeTask,startTask,toggleExpand,toggleSub,addSub,deleteTask};
+  const cardProps={activeTaskId,fadingId,updateTasks,restoreTask,completeTask,startTask,toggleExpand,toggleSub,addSub,deleteSub,deleteTask};
   const tabBtn=(k,l)=><button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:'8px',borderRadius:10,border:'none',cursor:'pointer',fontSize:13,fontWeight:700,background:tab===k?C.primary:C.card,color:tab===k?'#fff':C.textMuted,boxShadow:tab===k?'none':C.shadowSm,transition:'all 0.2s'}}>{l}</button>;
 
   return(
-    <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:10,animation:'fadeIn 0.15s ease-in-out'}}>
+    <div style={{flex:1,minHeight:0,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:10,animation:'fadeIn 0.15s ease-in-out'}}>
       <div style={{display:'flex',gap:8}}>{tabBtn('active','Aktywne')}{tabBtn('done','Ukończone')}</div>
       {tab==='active'?(
         <>
@@ -705,36 +720,73 @@ function TasksView({tasks,setTasks,activeTaskId,setActiveTaskId,setActiveView}){
 // TIMER VIEW
 // ═══════════════════════════════════════════════════════
 function TimerView({timer}){
-  const{wM,bM,tot,sess,work,run,setRun,secs,color,setColor,muted,setMuted,reset,adjWM,adjBM,adjTot}=timer;
-  const[showSet,setSt]=useState(false);
+  const{wM,bM,tot,sess,work,run,setRun,secs,color,setColor,muted,setMuted,reset,adjWM,adjBM,adjTot,setSecsDirectly}=timer;
+  const[workLabel,setWorkLabel]=useState('Praca');
+  const[editLabel,setEditLabel]=useState(false);
+  const[labelDraft,setLabelDraft]=useState('');
+  const[editTime,setEditTime]=useState(false);
+  const[timeDraft,setTimeDraft]=useState('');
   const fmt=v=>`${pad2(Math.floor(v/60))}:${pad2(v%60)}`;
   const full=work?wM*60:bM*60,r=90,circ=2*Math.PI*r;
   const off=(run||secs<full)?circ*(1-secs/full):0;
+  const commitLabel=()=>{setEditLabel(false);if(labelDraft.trim())setWorkLabel(labelDraft.trim().slice(0,15));};
+  const commitTime=()=>{
+    setEditTime(false);
+    const m=parseInt(timeDraft);
+    if(!isNaN(m)&&m>0)setSecsDirectly(Math.min(360,m)*60);
+  };
   return(
-    <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.15s ease-in-out'}}>
+    <div style={{flex:1,minHeight:0,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.15s ease-in-out'}}>
       <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:'20px 16px',display:'flex',flexDirection:'column',alignItems:'center'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-          <span style={{fontSize:22}}>{work?'🎯':'☕'}</span>
-          <span style={{fontSize:17,fontWeight:800,color:C.text}}>{work?'Praca':'Przerwa'}</span>
+          {work&&editLabel?(
+            <input autoFocus value={labelDraft} maxLength={15}
+              onChange={e=>setLabelDraft(e.target.value)}
+              onBlur={commitLabel}
+              onKeyDown={e=>{if(e.key==='Enter')commitLabel();if(e.key==='Escape')setEditLabel(false);}}
+              style={{fontSize:17,fontWeight:800,color:C.text,border:'none',borderBottom:`2px solid ${C.primary}`,background:'transparent',outline:'none',width:130,textAlign:'center'}}/>
+          ):(
+            <span style={{fontSize:17,fontWeight:800,color:C.text,cursor:work&&!run?'pointer':'default'}}
+              onClick={()=>{if(work&&!run){setLabelDraft(workLabel);setEditLabel(true);}}}
+              title={work&&!run?'Kliknij, aby zmienić etykietę':undefined}>
+              {work?workLabel:'☕ Przerwa'}
+            </span>
+          )}
           <span style={{fontSize:12,color:C.textMuted,marginLeft:4}}>Sesja {sess}/{tot}</span>
           <button onClick={()=>setMuted(v=>!v)} title={muted?'Włącz dźwięk':'Wycisz'}
             style={{marginLeft:6,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:'4px 7px',cursor:'pointer',display:'flex',alignItems:'center'}}>
             {muted?<VolumeX size={13} color={C.border}/>:<Volume2 size={13} color={C.textMuted}/>}
           </button>
         </div>
-        <svg width="230" height="230" viewBox="0 0 240 240">
-          <circle cx="120" cy="120" r={r} fill="none" stroke={C.borderLight} strokeWidth="10"/>
-          <g transform="scale(-1,1) translate(-240,0)">
-            <circle cx="120" cy="120" r={r} fill="none" stroke={color} strokeWidth="10"
-              strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round" transform="rotate(-90 120 120)"
-              style={{transition:run?'stroke-dashoffset 0.8s linear':'none'}}/>
-          </g>
-          <text x="120" y="133" textAnchor="middle" style={{fontSize:42,fontWeight:800,fill:C.text,fontFamily:'monospace'}}>{fmt(secs)}</text>
-        </svg>
-        {/* Wybór koloru */}
+        <div style={{position:'relative',width:230,height:230}}>
+          <svg width="230" height="230" viewBox="0 0 240 240">
+            <circle cx="120" cy="120" r={r} fill="none" stroke={C.borderLight} strokeWidth="10"/>
+            <g transform="scale(-1,1) translate(-240,0)">
+              <circle cx="120" cy="120" r={r} fill="none" stroke={color} strokeWidth="10"
+                strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round" transform="rotate(-90 120 120)"
+                style={{transition:run?'stroke-dashoffset 0.8s linear':'none'}}/>
+            </g>
+          </svg>
+          {editTime&&!run?(
+            <input autoFocus value={timeDraft} inputMode="numeric" pattern="[0-9]*" maxLength={3}
+              onChange={e=>{if(/^\d*$/.test(e.target.value))setTimeDraft(e.target.value);}}
+              onBlur={commitTime}
+              onKeyDown={e=>{if(e.key==='Enter')commitTime();if(e.key==='Escape')setEditTime(false);}}
+              style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
+                width:110,textAlign:'center',fontSize:42,fontWeight:800,fontFamily:'monospace',
+                border:'none',borderBottom:`2px solid ${color}`,background:'transparent',color:C.text,outline:'none'}}/>
+          ):(
+            <div onClick={()=>{if(!run){setTimeDraft(String(Math.floor(secs/60)));setEditTime(true);}}}
+              style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
+                fontSize:36,fontWeight:800,fontFamily:'monospace',color:C.text,
+                cursor:run?'default':'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
+              {fmt(secs)}
+            </div>
+          )}
+        </div>
         <div style={{display:'flex',gap:8,marginTop:6}}>
           {TIMER_COLORS.map(tc=>(
-            <button key={tc} onClick={()=>setColor(tc)} title={tc}
+            <button key={tc} onClick={()=>setColor(tc)}
               style={{width:22,height:22,borderRadius:'50%',background:tc,border:`2.5px solid ${color===tc?C.text:'transparent'}`,cursor:'pointer',transition:'border 0.15s'}}/>
           ))}
         </div>
@@ -747,30 +799,24 @@ function TimerView({timer}){
           <button onClick={()=>reset()} style={{padding:'12px 14px',background:C.bg,border:`1px solid ${C.border}`,borderRadius:14,cursor:'pointer'}}><RotateCcw size={17} color={C.textMuted}/></button>
         </div>
       </div>
-      <button onClick={()=>setSt(v=>!v)} style={{width:'100%',background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:'11px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:13,fontWeight:700,color:C.textMuted,cursor:'pointer',boxShadow:C.shadowSm}}>
-        <span style={{display:'flex',alignItems:'center',gap:6}}><Settings size={14}/>Ustawienia</span>
-        {showSet?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
-      </button>
-      {showSet&&(
-        <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:16,display:'flex',flexDirection:'column',gap:14}}>
-          {[['Czas pracy (min)',wM,adjWM],['Czas przerwy (min)',bM,adjBM]].map(([lbl,val,fn])=>(
-            <div key={lbl} style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:13,color:C.text}}>{lbl}</span>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <button onClick={()=>fn(-1)} style={{width:32,height:32,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,fontSize:16,fontWeight:700,color:C.textMuted,cursor:'pointer'}}>−</button>
-                <span style={{width:28,textAlign:'center',fontWeight:700,fontSize:14,color:C.text}}>{val}</span>
-                <button onClick={()=>fn(+1)} style={{width:32,height:32,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,fontSize:16,fontWeight:700,color:C.textMuted,cursor:'pointer'}}>+</button>
-              </div>
-            </div>
-          ))}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span style={{fontSize:13,color:C.text}}>Liczba sesji</span>
-            <div style={{display:'flex',gap:6}}>
-              {[1,2,3,4].map(n=><button key={n} onClick={()=>adjTot(n)} style={{width:32,height:32,borderRadius:8,border:'none',fontSize:13,fontWeight:700,cursor:'pointer',background:n===tot?color:C.bg,color:n===tot?'#fff':C.textMuted,transition:'all 0.15s'}}>{n}</button>)}
+      <div style={{background:C.card,borderRadius:16,boxShadow:C.shadowSm,padding:16,display:'flex',flexDirection:'column',gap:14}}>
+        {[['Czas pracy (min)',wM,adjWM],['Czas przerwy (min)',bM,adjBM]].map(([lbl,val,fn])=>(
+          <div key={lbl} style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:13,color:C.text}}>{lbl}</span>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <button onClick={()=>fn(-1)} style={{width:32,height:32,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,fontSize:16,fontWeight:700,color:C.textMuted,cursor:'pointer'}}>−</button>
+              <span style={{width:28,textAlign:'center',fontWeight:700,fontSize:14,color:C.text}}>{val}</span>
+              <button onClick={()=>fn(+1)} style={{width:32,height:32,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,fontSize:16,fontWeight:700,color:C.textMuted,cursor:'pointer'}}>+</button>
             </div>
           </div>
+        ))}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontSize:13,color:C.text}}>Liczba sesji</span>
+          <div style={{display:'flex',gap:6}}>
+            {[1,2,3,4].map(n=><button key={n} onClick={()=>adjTot(n)} style={{width:32,height:32,borderRadius:8,border:'none',fontSize:13,fontWeight:700,cursor:'pointer',background:n===tot?color:C.bg,color:n===tot?'#fff':C.textMuted,transition:'all 0.15s'}}>{n}</button>)}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -820,7 +866,7 @@ function AIView({chatMessages,setChatMessages,energy,onSetEnergy,todayGoal,tasks
   },[setTasks]);
   const onTA=e=>{setInput(e.target.value);const ta=taRef.current;if(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,84)+'px';}};
   return(
-    <div style={{flex:1,display:'flex',flexDirection:'column',animation:'fadeIn 0.15s ease-in-out'}}>
+    <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column',animation:'fadeIn 0.15s ease-in-out'}}>
       <div style={{background:C.card,boxShadow:C.shadowSm,padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}><Brain size={19} color={C.primary}/><span style={{fontSize:16,fontWeight:800,color:C.text}}>Asystent AI</span></div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
