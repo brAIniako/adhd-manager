@@ -916,12 +916,64 @@ function AIView({chatMessages,setChatMessages,energy,onSetEnergy,todayGoal,tasks
 }
 
 // ═══════════════════════════════════════════════════════
+// LOGIN SCREEN
+// ═══════════════════════════════════════════════════════
+function LoginScreen({onLogin}:{onLogin:()=>void}){
+  const[pw,setPw]=useState('');
+  const[err,setErr]=useState(false);
+  const[shake,setShake]=useState(false);
+  const submit=()=>{
+    if(pw==='ADHD2026'){onLogin();}
+    else{setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}
+  };
+  return(
+    <div style={{minHeight:'100vh',background:'#000',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'system-ui,sans-serif'}}>
+      <div style={{background:C.card,borderRadius:24,boxShadow:'0 0 40px rgba(255,255,255,0.15), 0 0 80px rgba(255,255,255,0.05)',padding:'36px 28px',width:'100%',maxWidth:360,
+        animation:shake?'shakeAnim 0.4s ease-out':'none'}}>
+        <div style={{textAlign:'center',marginBottom:28}}>
+          <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:56,height:56,borderRadius:16,background:C.primaryLight,marginBottom:14}}>
+            <Brain size={28} color={C.primary}/>
+          </div>
+          <h1 style={{fontSize:22,fontWeight:800,color:C.text,margin:'0 0 4px'}}>ADHD Manager</h1>
+          <p style={{fontSize:13,color:C.textMuted,margin:0}}>Wprowadź hasło, aby kontynuować</p>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <input
+            type="password"
+            value={pw}
+            onChange={e=>{setPw(e.target.value);setErr(false);}}
+            onKeyDown={e=>{if(e.key==='Enter')submit();}}
+            placeholder="Hasło"
+            autoFocus
+            style={{border:`1.5px solid ${err?'#dc2626':C.border}`,borderRadius:12,padding:'12px 14px',fontSize:15,outline:'none',
+              background:err?'#fef2f2':C.bg,color:C.text,width:'100%',boxSizing:'border-box',transition:'border-color 0.15s, background 0.15s'}}
+          />
+          {err&&<p style={{fontSize:12,color:'#dc2626',fontWeight:600,margin:'-6px 0 0',textAlign:'center'}}>Nieprawidłowe hasło</p>}
+          <button onClick={submit}
+            style={{background:C.primary,color:'#fff',border:'none',borderRadius:12,padding:'13px',fontSize:15,fontWeight:700,cursor:'pointer',
+              boxShadow:`0 4px 14px ${C.primary}44`,transition:'background 0.2s'}}
+            onMouseEnter={e=>(e.currentTarget.style.background=C.primaryDark)}
+            onMouseLeave={e=>(e.currentTarget.style.background=C.primary)}>
+            Zaloguj się
+          </button>
+        </div>
+      </div>
+      <style>{`@keyframes shakeAnim{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}`}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // ROOT APP
 // ═══════════════════════════════════════════════════════
 export default function App(){
   const[view,setView]=useState('home'),[tasks,setTasks]=useState([]),[actId,setActId]=useState(null);
   const[energy,setEnergy]=useState(3),[chat,setChat]=useState([]),[loaded,setLoaded]=useState(false);
+  const[authed,setAuthed]=useState(()=>sessionStorage.getItem('adhd-auth')==='1');
   const timer=usePomodoro();
+
+  const handleLogin=()=>{sessionStorage.setItem('adhd-auth','1');setAuthed(true);};
+  if(!authed)return<LoginScreen onLogin={handleLogin}/>;
 
   useEffect(()=>{
     let cancelled=false;
